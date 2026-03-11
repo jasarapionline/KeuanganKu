@@ -1,0 +1,5 @@
+{
+  "name": "KeuanganKu Dashboard",
+  "description": "Interactive financial dashboard connected to Google Sheets via Google Apps Script.",
+  "requestFramePermissions": []
+}
