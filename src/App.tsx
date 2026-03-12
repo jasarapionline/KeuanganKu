@@ -32,7 +32,8 @@ import {
   X,
   CheckCircle2,
   AlertCircle,
-  Palette
+  Palette,
+  LogOut
 } from 'lucide-react';
 import { format, parseISO, getYear, getMonth, isToday, isSameDay, isWithinInterval, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isSameMonth, subMonths } from 'date-fns';
 import { jsPDF } from 'jspdf';
@@ -40,6 +41,9 @@ import autoTable from 'jspdf-autotable';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { motion } from 'motion/react';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth } from './firebase';
+import Login from './components/Login';
 
 // Utility for tailwind classes
 function cn(...inputs: ClassValue[]) {
@@ -71,6 +75,9 @@ interface Account {
 const DEFAULT_COLORS = ['#10b981', '#3b82f6', '#ef4444', '#f59e0b', '#8b5cf6', '#ec4899', '#6366f1'];
 
 export default function App() {
+  const [user, setUser] = useState<any>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+
   const [activeTab, setActiveTab] = useState<'dashboard' | 'riwayat' | 'rekening' | 'settings'>('dashboard');
   const [appName, setAppName] = useState(localStorage.getItem('app_name') || 'KeuanganKu');
   const [themeColor, setThemeColor] = useState(localStorage.getItem('theme_color') || '#10b981');
@@ -82,6 +89,16 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(!localStorage.getItem('gas_url'));
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [newTransaction, setNewTransaction] = useState({
+    tanggal: format(new Date(), 'yyyy-MM-dd'),
+    jenis: 'Pengeluaran' as 'Pemasukan' | 'Pengeluaran',
+    rekening: '',
+    nominal: '',
+    keterangan: ''
+  });
+  const [newAccount, setNewAccount] = useState({ nama: '', warna: DEFAULT_COLORS[0] });
 
   // Filters
   const [filterYear, setFilterYear] = useState<string>('All');
@@ -107,32 +124,6 @@ export default function App() {
     };
   });
 
-  useEffect(() => {
-    localStorage.setItem('pdf_settings', JSON.stringify(pdfSettings));
-  }, [pdfSettings]);
-
-  useEffect(() => {
-    localStorage.setItem('theme_color', themeColor);
-    document.documentElement.style.setProperty('--primary-color', themeColor);
-    // Generate a lighter version for backgrounds
-    const r = parseInt(themeColor.slice(1, 3), 16);
-    const g = parseInt(themeColor.slice(3, 5), 16);
-    const b = parseInt(themeColor.slice(5, 7), 16);
-    document.documentElement.style.setProperty('--primary-color-light', `rgba(${r}, ${g}, ${b}, 0.1)`);
-  }, [themeColor]);
-
-  // Form States
-  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
-  const [newTransaction, setNewTransaction] = useState({
-    tanggal: format(new Date(), 'yyyy-MM-dd'),
-    jenis: 'Pengeluaran' as 'Pemasukan' | 'Pengeluaran',
-    rekening: '',
-    nominal: '',
-    keterangan: ''
-  });
-  const [newAccount, setNewAccount] = useState({ nama: '', warna: DEFAULT_COLORS[0] });
-
   const fetchData = async () => {
     if (!gasUrl) return;
     setLoading(true);
@@ -154,6 +145,84 @@ export default function App() {
       setLoading(false);
     }
   };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Logout error:', error);
+      setError('Gagal logout.');
+    }
+  };
+
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      const date = safeParseDate(t.tanggal);
+      const yearMatch = filterYear === 'All' || getYear(date).toString() === filterYear;
+      const monthMatch = filterMonth === 'All' || (getMonth(date) + 1).toString() === filterMonth;
+      const typeMatch = filterType === 'All' || t.jenis === filterType;
+      const accountMatch = filterAccount === 'All' || t.rekening === filterAccount;
+      
+      const start = startDate ? safeParseDate(startDate).getTime() : 0;
+      const end = endDate ? safeParseDate(endDate).getTime() + 86399999 : Infinity; // End of day
+      const dateMatch = date.getTime() >= start && date.getTime() <= end;
+
+      return yearMatch && monthMatch && typeMatch && accountMatch && dateMatch;
+    }).sort((a, b) => safeParseDate(b.tanggal).getTime() - safeParseDate(a.tanggal).getTime());
+  }, [transactions, filterYear, filterMonth, filterType, filterAccount, startDate, endDate]);
+
+  const years = useMemo(() => {
+    const yrs = new Set(transactions.map(t => getYear(safeParseDate(t.tanggal)).toString()));
+    return ['All', ...Array.from(yrs).sort().reverse()];
+  }, [transactions]);
+
+  const accountBalances = useMemo(() => {
+    return accounts.map(acc => {
+      const balance = transactions
+        .filter(t => t.rekening === acc.nama)
+        .reduce((sum, t) => t.jenis === 'Pemasukan' ? sum + t.nominal : sum - t.nominal, 0);
+      return { ...acc, balance };
+    });
+  }, [transactions, accounts]);
+
+  const totalBalance = useMemo(() => {
+    return accountBalances.reduce((sum, acc) => sum + acc.balance, 0);
+  }, [accountBalances]);
+
+  const stats = useMemo(() => {
+    const income = transactions.filter(t => t.jenis === 'Pemasukan').reduce((s, t) => s + t.nominal, 0);
+    const expense = transactions.filter(t => t.jenis === 'Pengeluaran').reduce((s, t) => s + t.nominal, 0);
+    return { income, expense, balance: income - expense };
+  }, [transactions]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoadingAuth(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('pdf_settings', JSON.stringify(pdfSettings));
+  }, [pdfSettings]);
+
+  useEffect(() => {
+    localStorage.setItem('theme_color', themeColor);
+    document.documentElement.style.setProperty('--primary-color', themeColor);
+    // Generate a lighter version for backgrounds
+    const r = parseInt(themeColor.slice(1, 3), 16);
+    const g = parseInt(themeColor.slice(3, 5), 16);
+    const b = parseInt(themeColor.slice(5, 7), 16);
+    document.documentElement.style.setProperty('--primary-color-light', `rgba(${r}, ${g}, ${b}, 0.1)`);
+  }, [themeColor]);
+
+  if (loadingAuth) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (!user) return <Login />;
+
+  // Form States
+
+
 
   const handlePost = async (payload: any) => {
     if (!gasUrl) return;
@@ -297,27 +366,6 @@ export default function App() {
     }
   };
 
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter(t => {
-      const date = safeParseDate(t.tanggal);
-      const yearMatch = filterYear === 'All' || getYear(date).toString() === filterYear;
-      const monthMatch = filterMonth === 'All' || (getMonth(date) + 1).toString() === filterMonth;
-      const typeMatch = filterType === 'All' || t.jenis === filterType;
-      const accountMatch = filterAccount === 'All' || t.rekening === filterAccount;
-      
-      const start = startDate ? safeParseDate(startDate).getTime() : 0;
-      const end = endDate ? safeParseDate(endDate).getTime() + 86399999 : Infinity; // End of day
-      const dateMatch = date.getTime() >= start && date.getTime() <= end;
-
-      return yearMatch && monthMatch && typeMatch && accountMatch && dateMatch;
-    }).sort((a, b) => safeParseDate(b.tanggal).getTime() - safeParseDate(a.tanggal).getTime());
-  }, [transactions, filterYear, filterMonth, filterType, filterAccount, startDate, endDate]);
-
-  const years = useMemo(() => {
-    const yrs = new Set(transactions.map(t => getYear(safeParseDate(t.tanggal)).toString()));
-    return ['All', ...Array.from(yrs).sort().reverse()];
-  }, [transactions]);
-
   const months = [
     { val: 'All', label: 'Semua Bulan' },
     { val: '1', label: 'Januari' }, { val: '2', label: 'Februari' },
@@ -327,29 +375,6 @@ export default function App() {
     { val: '9', label: 'September' }, { val: '10', label: 'Oktober' },
     { val: '11', label: 'November' }, { val: '12', label: 'Desember' }
   ];
-
-  useEffect(() => {
-    if (gasUrl) fetchData();
-  }, []);
-
-  const accountBalances = useMemo(() => {
-    return accounts.map(acc => {
-      const balance = transactions
-        .filter(t => t.rekening === acc.nama)
-        .reduce((sum, t) => t.jenis === 'Pemasukan' ? sum + t.nominal : sum - t.nominal, 0);
-      return { ...acc, balance };
-    });
-  }, [transactions, accounts]);
-
-  const totalBalance = useMemo(() => {
-    return accountBalances.reduce((sum, acc) => sum + acc.balance, 0);
-  }, [accountBalances]);
-
-  const stats = useMemo(() => {
-    const income = transactions.filter(t => t.jenis === 'Pemasukan').reduce((s, t) => s + t.nominal, 0);
-    const expense = transactions.filter(t => t.jenis === 'Pengeluaran').reduce((s, t) => s + t.nominal, 0);
-    return { income, expense, balance: income - expense };
-  }, [transactions]);
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-[#1A1A1A] font-sans pb-20 md:pb-0">
@@ -379,6 +404,9 @@ export default function App() {
             </button>
             <button onClick={() => setShowSettings(!showSettings)} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
               <Settings size={20} />
+            </button>
+            <button onClick={handleLogout} className="p-2 hover:bg-red-100 text-red-600 rounded-lg transition-colors">
+              <LogOut size={20} />
             </button>
           </div>
         </div>
