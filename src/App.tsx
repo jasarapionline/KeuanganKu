@@ -105,8 +105,8 @@ export default function App() {
   const [filterMonth, setFilterMonth] = useState<string>('All');
   const [filterType, setFilterType] = useState<string>('All');
   const [filterAccount, setFilterAccount] = useState<string>('All');
-  const [startDate, setStartDate] = useState<string>('2026-01-11');
-  const [endDate, setEndDate] = useState<string>('2026-03-11');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
   const [chartFilter, setChartFilter] = useState<'hari' | 'minggu' | 'bulan' | 'semua'>('minggu');
   const [showPdfSettings, setShowPdfSettings] = useState(false);
   const [showPdfPreview, setShowPdfPreview] = useState(false);
@@ -155,6 +155,16 @@ export default function App() {
     }
   };
 
+  const resetFilters = () => {
+    setFilterYear('All');
+    setFilterMonth('All');
+    setFilterType('All');
+    setFilterAccount('All');
+    
+    setStartDate('');
+    setEndDate('');
+  };
+
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
       const date = safeParseDate(t.tanggal);
@@ -190,10 +200,10 @@ export default function App() {
   }, [accountBalances]);
 
   const stats = useMemo(() => {
-    const income = transactions.filter(t => t.jenis === 'Pemasukan').reduce((s, t) => s + t.nominal, 0);
-    const expense = transactions.filter(t => t.jenis === 'Pengeluaran').reduce((s, t) => s + t.nominal, 0);
+    const income = filteredTransactions.filter(t => t.jenis === 'Pemasukan').reduce((s, t) => s + t.nominal, 0);
+    const expense = filteredTransactions.filter(t => t.jenis === 'Pengeluaran').reduce((s, t) => s + t.nominal, 0);
     return { income, expense, balance: income - expense };
-  }, [transactions]);
+  }, [filteredTransactions]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -298,12 +308,13 @@ export default function App() {
       doc.text("Tanggal Laporan", infoX, 52);
       doc.text("Statement Date", infoX, 55);
       doc.text(":", infoX + 30, 53);
-      doc.text(format(new Date(), 'dd/MM/yy'), infoX + 35, 53);
+      doc.text(format(new Date(), 'dd/MM/yy HH:mm'), infoX + 35, 53);
 
       doc.text("Periode Transaksi", infoX, 62);
       doc.text("Transaction Periode", infoX, 65);
       doc.text(":", infoX + 30, 63);
-      doc.text(`${format(safeParseDate(startDate), 'dd/MM/yy')} - ${format(safeParseDate(endDate), 'dd/MM/yy')}`, infoX + 35, 63);
+      const periodText = (startDate && endDate) ? `${format(safeParseDate(startDate), 'dd/MM/yy')} - ${format(safeParseDate(endDate), 'dd/MM/yy')}` : "Semua Periode";
+      doc.text(periodText, infoX + 35, 63);
 
       doc.text("No. Rekening", 14, 100);
       doc.text("Account No", 14, 103);
@@ -592,12 +603,12 @@ export default function App() {
                       <div className="flex">
                         <span className="w-32">Tanggal Laporan<br/><span className="italic text-gray-500">Statement Date</span></span>
                         <span className="mx-2">:</span>
-                        <span>{format(new Date(), 'dd/MM/yy')}</span>
+                        <span>{format(new Date(), 'dd/MM/yy HH:mm')}</span>
                       </div>
                       <div className="flex">
                         <span className="w-32">Periode Transaksi<br/><span className="italic text-gray-500">Transaction Period</span></span>
                         <span className="mx-2">:</span>
-                        <span>{format(safeParseDate(startDate), 'dd/MM/yy')} - {format(safeParseDate(endDate), 'dd/MM/yy')}</span>
+                        <span>{(startDate && endDate) ? `${format(safeParseDate(startDate), 'dd/MM/yy')} - ${format(safeParseDate(endDate), 'dd/MM/yy')}` : "Semua Periode"}</span>
                       </div>
                     </div>
                   </div>
@@ -771,19 +782,38 @@ export default function App() {
                     <h3 className="text-lg font-bold flex items-center gap-2"><TrendingUp className="text-emerald-600" /> Grafik Transaksi</h3>
                     <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl self-start">
                       <button 
-                        onClick={() => setChartFilter('hari')} 
+                        onClick={() => {
+                          setChartFilter('hari');
+                          const now = new Date();
+                          setStartDate(format(now, 'yyyy-MM-dd'));
+                          setEndDate(format(now, 'yyyy-MM-dd'));
+                        }} 
                         className={cn("px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all", chartFilter === 'hari' ? "bg-white text-emerald-600 shadow-sm" : "text-gray-500")}
                       >Hari</button>
                       <button 
-                        onClick={() => setChartFilter('minggu')} 
+                        onClick={() => {
+                          setChartFilter('minggu');
+                          const now = new Date();
+                          setStartDate(format(subDays(now, 7), 'yyyy-MM-dd'));
+                          setEndDate(format(now, 'yyyy-MM-dd'));
+                        }} 
                         className={cn("px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all", chartFilter === 'minggu' ? "bg-white text-emerald-600 shadow-sm" : "text-gray-500")}
                       >Minggu</button>
                       <button 
-                        onClick={() => setChartFilter('bulan')} 
+                        onClick={() => {
+                          setChartFilter('bulan');
+                          const now = new Date();
+                          setStartDate(format(subDays(now, 30), 'yyyy-MM-dd'));
+                          setEndDate(format(now, 'yyyy-MM-dd'));
+                        }} 
                         className={cn("px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all", chartFilter === 'bulan' ? "bg-white text-emerald-600 shadow-sm" : "text-gray-500")}
                       >Bulan</button>
                       <button 
-                        onClick={() => setChartFilter('semua')} 
+                        onClick={() => {
+                          setChartFilter('semua');
+                          setStartDate('');
+                          setEndDate('');
+                        }} 
                         className={cn("px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all", chartFilter === 'semua' ? "bg-white text-emerald-600 shadow-sm" : "text-gray-500")}
                       >Semua</button>
                     </div>
@@ -839,6 +869,13 @@ export default function App() {
                   <option value="All">Semua Rekening</option>
                   {accounts.map(acc => <option key={acc.nama} value={acc.nama}>{acc.nama}</option>)}
                 </select>
+                <button 
+                  onClick={resetFilters}
+                  className="p-2 bg-white border border-gray-200 rounded-xl text-gray-500 hover:text-red-500 transition-all"
+                  title="Reset Filter"
+                >
+                  <X size={20} />
+                </button>
                 <button 
                   onClick={() => setShowPdfSettings(true)}
                   className="p-2 bg-white border border-gray-200 rounded-xl text-gray-500 transition-all flex items-center gap-2"
