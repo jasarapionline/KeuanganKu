@@ -105,6 +105,12 @@ export default function App() {
     };
     fetchGasUrl();
   }, []);
+
+  useEffect(() => {
+    if (gasUrl) {
+      fetchData();
+    }
+  }, [gasUrl]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(false);
