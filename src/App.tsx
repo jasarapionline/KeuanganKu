@@ -470,7 +470,19 @@ export default function App() {
               placeholder="URL Web App Apps Script..."
               className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
             />
-            <button onClick={() => { fetchData(); setShowSettings(false); }} className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all">Simpan Konfigurasi</button>
+            <button 
+              onClick={async () => {
+                if (user) {
+                  await setDoc(doc(db, 'users', user.uid), { url: gasUrl }, { merge: true });
+                }
+                localStorage.setItem('gas_url', gasUrl);
+                fetchData(); 
+                setShowSettings(false); 
+              }} 
+              className="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all"
+            >
+              Simpan Konfigurasi
+            </button>
           </div>
         )}
 
