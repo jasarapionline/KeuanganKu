@@ -42,7 +42,8 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { motion } from 'motion/react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth } from './firebase';
+import { auth, db } from './firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import Login from './components/Login';
 
 // Utility for tailwind classes
@@ -81,7 +82,29 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'riwayat' | 'rekening' | 'settings'>('dashboard');
   const [appName, setAppName] = useState(localStorage.getItem('app_name') || 'KeuanganKu');
   const [themeColor, setThemeColor] = useState(localStorage.getItem('theme_color') || '#10b981');
-  const [gasUrl, setGasUrl] = useState<string>(localStorage.getItem('gas_url') || '');
+  const [gasUrl, setGasUrl] = useState<string>('');
+  const updateGasUrl = async (url: string) => {
+    try {
+      await setDoc(doc(db, 'config', 'gasUrl'), { url });
+      setGasUrl(url);
+    } catch (err) {
+      console.error('Error updating gasUrl:', err);
+    }
+  };
+  useEffect(() => {
+    const fetchGasUrl = async () => {
+      try {
+        const docRef = doc(db, 'config', 'gasUrl');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setGasUrl(docSnap.data().url);
+        }
+      } catch (err) {
+        console.error('Error fetching gasUrl:', err);
+      }
+    };
+    fetchGasUrl();
+  }, []);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(false);
@@ -138,7 +161,7 @@ export default function App() {
       if (result.accounts.length > 0 && !newTransaction.rekening) {
         setNewTransaction(prev => ({ ...prev, rekening: result.accounts[0].nama }));
       }
-      localStorage.setItem('gas_url', gasUrl);
+      await updateGasUrl(gasUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan');
     } finally {
@@ -178,7 +201,11 @@ export default function App() {
       const dateMatch = date.getTime() >= start && date.getTime() <= end;
 
       return yearMatch && monthMatch && typeMatch && accountMatch && dateMatch;
-    }).sort((a, b) => safeParseDate(b.tanggal).getTime() - safeParseDate(a.tanggal).getTime());
+    }).sort((a, b) => {
+      const dateDiff = safeParseDate(b.tanggal).getTime() - safeParseDate(a.tanggal).getTime();
+      if (dateDiff !== 0) return dateDiff;
+      return Number(b.id) - Number(a.id);
+    });
   }, [transactions, filterYear, filterMonth, filterType, filterAccount, startDate, endDate]);
 
   const years = useMemo(() => {
@@ -1098,7 +1125,7 @@ export default function App() {
                     />
                     <button 
                       onClick={() => {
-                        localStorage.setItem('gas_url', gasUrl);
+                        updateGasUrl(gasUrl);
                         fetchData();
                         setSuccess('URL disimpan!');
                         setTimeout(() => setSuccess(null), 2000);
