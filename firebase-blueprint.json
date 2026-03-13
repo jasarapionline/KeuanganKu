@@ -10,12 +10,27 @@
         "role": { "type": "string", "description": "User role (admin/user)" }
       },
       "required": ["uid", "email"]
+    },
+    "LoginLog": {
+      "title": "LoginLog",
+      "description": "User login information",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "User ID" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Login time" },
+        "userAgent": { "type": "string", "description": "Device user agent" }
+      },
+      "required": ["userId", "timestamp", "userAgent"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": { "$ref": "User" },
       "description": "User profiles"
+    },
+    "/loginLogs/{logId}": {
+      "schema": { "$ref": "LoginLog" },
+      "description": "Login logs"
     }
   }
 }

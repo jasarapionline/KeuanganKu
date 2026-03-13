@@ -15,6 +15,11 @@ service cloud.firestore {
       allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
 
+    match /loginLogs/{logId} {
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.userId;
+      allow read: if isAdmin();
+    }
+
     match /config/{document=**} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
 import { Wallet } from 'lucide-react';
+import { addDoc, collection } from 'firebase/firestore';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -14,7 +15,12 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      await addDoc(collection(db, 'loginLogs'), {
+        userId: userCredential.user.uid,
+        timestamp: new Date().toISOString(),
+        userAgent: navigator.userAgent
+      });
     } catch (err: any) {
       setError('Email atau password salah.');
     } finally {

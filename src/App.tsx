@@ -43,7 +43,7 @@ import { twMerge } from 'tailwind-merge';
 import { motion } from 'motion/react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db } from './firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, addDoc, collection } from 'firebase/firestore';
 import Login from './components/Login';
 
 // Utility for tailwind classes
